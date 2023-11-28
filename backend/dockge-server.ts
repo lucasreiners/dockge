@@ -31,6 +31,9 @@ import gracefulShutdown from "http-graceful-shutdown";
 import User from "./models/user";
 import childProcess from "child_process";
 import { Terminal } from "./terminal";
+import { DockgeInstanceManager } from "./dockge-instance-manager";
+
+import "dotenv/config";
 
 export class DockgeServer {
     app : Express;
@@ -65,10 +68,13 @@ export class DockgeServer {
 
     stacksDir : string = "";
 
+    dockgeInstanceManager : DockgeInstanceManager;
+
     /**
      *
      */
     constructor() {
+
         // Catch unexpected errors here
         let unexpectedErrorHandler = (error : unknown) => {
             console.trace(error);
@@ -184,6 +190,8 @@ export class DockgeServer {
             response.send(this.indexHTML);
         });
 
+        this.dockgeInstanceManager = DockgeInstanceManager.getInstance();
+
         // Allow all CORS origins in development
         let cors = undefined;
         if (isDev) {
@@ -200,6 +208,9 @@ export class DockgeServer {
         this.io.on("connection", async (socket: Socket) => {
             log.info("server", "Socket connected!");
 
+            let dockgeSocket = socket as DockgeSocket;
+            dockgeSocket.instanceSocketList = {};
+
             this.sendInfo(socket, true);
 
             if (this.needSetup) {
@@ -209,7 +220,7 @@ export class DockgeServer {
 
             // Create socket handlers
             for (const socketHandler of this.socketHandlerList) {
-                socketHandler.create(socket as DockgeSocket, this);
+                socketHandler.create(dockgeSocket, this);
             }
 
             // ***************************
@@ -219,11 +230,17 @@ export class DockgeServer {
             log.debug("auth", "check auto login");
             if (await Settings.get("disableAuth")) {
                 log.info("auth", "Disabled Auth: auto login to admin");
-                this.afterLogin(socket as DockgeSocket, await R.findOne("user") as User);
+                this.afterLogin(dockgeSocket, await R.findOne("user") as User);
                 socket.emit("autoLogin");
             } else {
                 log.debug("auth", "need auth");
             }
+
+            // Socket disconnect
+            socket.on("disconnect", () => {
+                log.info("server", "Socket disconnected!");
+                this.dockgeInstanceManager.disconnect(dockgeSocket);
+            });
 
         });
 
@@ -249,6 +266,9 @@ export class DockgeServer {
         } catch (e) {
             log.error("server", e);
         }
+
+        // Also connect to other dockge instances
+        this.dockgeInstanceManager.connect(socket);
     }
 
     /**

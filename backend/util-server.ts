@@ -1,6 +1,6 @@
 import { Socket } from "socket.io";
+import { Socket as SocketClient } from "socket.io-client";
 import { Terminal } from "./terminal";
-import { randomBytes } from "crypto";
 import { log } from "./log";
 import { ERROR_TYPE_VALIDATION } from "./util-common";
 import { R } from "redbean-node";
@@ -14,6 +14,7 @@ export interface JWTDecoded {
 export interface DockgeSocket extends Socket {
     userID: number;
     consoleTerminal? : Terminal;
+    instanceSocketList: Record<string, SocketClient>;
 }
 
 // For command line arguments, so they are nullable
